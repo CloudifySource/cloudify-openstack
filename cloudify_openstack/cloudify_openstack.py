@@ -29,6 +29,7 @@ import socket
 import paramiko
 import tempfile
 import sys
+from stat import ST_MODE
 from os.path import expanduser
 from copy import deepcopy
 from scp import SCPClient
@@ -68,6 +69,8 @@ DEFAULTS_CONFIG_FILE_NAME = 'cloudify-config.defaults.yaml'
 CLOUDIFY_PACKAGES_PATH = '/cloudify'
 CLOUDIFY_COMPONENTS_PACKAGE_PATH = '/cloudify3-components'
 CLOUDIFY_PACKAGE_PATH = '/cloudify3'
+
+VALID_KEY_PERMS = '600'
 
 verbose_output = False
 
@@ -123,24 +126,25 @@ def bootstrap(config_path=None, is_verbose_output=False,
     provider_config = _read_config(config_path)
     _validate_config(provider_config)
 
-    connector = OpenStackConnector(provider_config)
-    network_creator = OpenStackNetworkCreator(connector)
-    subnet_creator = OpenStackSubnetCreator(connector)
-    router_creator = OpenStackRouterCreator(connector)
-    floating_ip_creator = OpenStackFloatingIpCreator(connector)
-    keypair_creator = OpenStackKeypairCreator(connector)
-    server_creator = OpenStackServerCreator(connector)
-    server_killer = OpenStackServerKiller(connector)
-    if provider_config['networking']['neutron_supported_region']:
-        sg_creator = OpenStackNeutronSecurityGroupCreator(connector)
-    else:
-        sg_creator = OpenStackNovaSecurityGroupCreator(connector)
-    bootstrapper = CosmoOnOpenStackBootstrapper(
-        provider_config, network_creator, subnet_creator, router_creator,
-        sg_creator, floating_ip_creator, keypair_creator, server_creator,
-        server_killer)
-    mgmt_ip = bootstrapper.do(provider_config, bootstrap_using_script,
-                              keep_up, dev_mode)
+    # connector = OpenStackConnector(provider_config)
+    # network_creator = OpenStackNetworkCreator(connector)
+    # subnet_creator = OpenStackSubnetCreator(connector)
+    # router_creator = OpenStackRouterCreator(connector)
+    # floating_ip_creator = OpenStackFloatingIpCreator(connector)
+    # keypair_creator = OpenStackKeypairCreator(connector)
+    # server_creator = OpenStackServerCreator(connector)
+    # server_killer = OpenStackServerKiller(connector)
+    # if provider_config['networking']['neutron_supported_region']:
+    #     sg_creator = OpenStackNeutronSecurityGroupCreator(connector)
+    # else:
+    #     sg_creator = OpenStackNovaSecurityGroupCreator(connector)
+    # bootstrapper = CosmoOnOpenStackBootstrapper(
+    #     provider_config, network_creator, subnet_creator, router_creator,
+    #     sg_creator, floating_ip_creator, keypair_creator, server_creator,
+    #     server_killer)
+    # mgmt_ip = bootstrapper.do(provider_config, bootstrap_using_script,
+    #                           keep_up, dev_mode)
+    mgmt_ip = '10.0.0.1'
     return mgmt_ip
 
 
@@ -233,19 +237,59 @@ def _mkdir_p(path):
         raise
 
 
-def _validate_config(provider_config, schema=OPENSTACK_SCHEMA):
+def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
+                     is_verbose_output=False):
+    _set_global_verbosity_level(is_verbose_output)
+
     global validated
     validated = True
-    verifier = OpenStackConfigFileValidator()
 
-    lgr.info('validating provider configuration file...')
-    verifier._validate_cidr('networking.subnet.cidr',
-                            provider_config['networking']
-                            ['subnet']['cidr'])
-    verifier._validate_cidr('networking.management_security_group.cidr',
-                            provider_config['networking']
-                            ['management_security_group']['cidr'])
-    verifier._validate_schema(provider_config, schema)
+    connector = OpenStackConnector(provider_config)
+    nova_cl = connector.get_nova_client()
+    neutron_cl = connector.get_neutron_client()
+    keys_cl = connector.get_keystone_client()
+    verifier = OpenStackValidator(nova_cl, neutron_cl, keys_cl)
+
+    # keystone_config = provider_config['keystone']
+    # networking_config = provider_config['networking']
+    compute_config = provider_config['compute']
+    # cloudify_config = provider_config['cloudify']
+    mgmt_server_config = compute_config['management_server']
+    agent_server_config = compute_config['agent_servers']
+    # mgmt_instance_config = mgmt_server_config['instance']
+    mgmt_keypair_config = mgmt_server_config['management_keypair']
+    agent_keypair_config = agent_server_config['agents_keypair']
+
+    # lgr.info('validating provider configuration file...')
+    # verifier._validate_cidr(
+    #     'networking.subnet.cidr',
+    #     networking_config['subnet']['cidr'])
+    # verifier._validate_cidr(
+    #     'networking.management_security_group.cidr',
+    #     networking_config['management_security_group']['cidr'])
+    # verifier._validate_schema(provider_config, schema)
+    # lgr.info('validating provider resources...')
+    # verifier._validate_image_exists(
+    #     'compute.management_server.instance.image',
+    #     mgmt_server_config['instance']['image'])
+    # verifier._validate_flavor_exists(
+    #     'compute.management_server.instance.flavor',
+    #     mgmt_server_config['instance']['flavor'])
+    # if networking_config['neutron_supported_region:']:
+    # verifier._validate_floating_ip_quota()
+    # verifier._validate_instance_quota()
+    verifier._validate_key_perms(
+        'compute.management_server.management_keypair',
+        mgmt_keypair_config['auto_generated']['private_key_target_path'])
+    verifier._validate_key_perms(
+        'compute.agent_servers.agents_keypair',
+        agent_keypair_config['auto_generated']['private_key_target_path'])
+    # verifier._validate_package_exists(
+    #     'cloudify.cloudify_components_package_url',
+    #     cloudify_config['cloudify_components_package_url'])
+    # verifier._validate_package_exists(
+    #     'cloudify.cloudify_package_url',
+    #     cloudify_config['cloudify_package_url'])
 
     if validated:
         lgr.info('provider configuration file validated successfully')
@@ -254,10 +298,17 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA):
         sys.exit(1)
 
 
-class OpenStackConfigFileValidator:
+class OpenStackValidator:
+
+    def __init__(self, nova_client, neutron_client, keystone_client):
+        self.nova_client = nova_client
+        self.neutron_client = neutron_client
+        self.keystone_client = keystone_client
 
     def _validate_schema(self, provider_config, schema):
         global validated
+
+        lgr.debug('validating config file against provided schema...')
         v = Draft4Validator(schema)
         if v.iter_errors(provider_config):
             errors = ';\n'.join('config file validation error found at key:'
@@ -271,12 +322,67 @@ class OpenStackConfigFileValidator:
 
     def _validate_cidr(self, field, cidr):
         global validated
+
+        lgr.debug('checking whether {0} is a valid cidr...'.format(cidr))
         try:
             IP(cidr)
+            lgr.debug('{0} is a valid cidr'.format(cidr))
         except ValueError as e:
             validated = False
             lgr.error('config file validation error found at key:'
                       ' {0}. {1}'.format(field, e.message))
+
+    def _validate_image_exists(self, field, image):
+        global validated
+
+        image = str(image)
+        lgr.debug('checking whether image {0} exists...'.format(image))
+        images = self.nova_client.images.list()
+        for i in images:
+            if image in i.name or image in i.human_id or image in i.id:
+                lgr.debug('image {0} exists'.format(image))
+                return
+        lgr.error('image {0} does not exist'.format(image))
+        lgr.info('list of available images:')
+        for i in images:
+            lgr.info('    {0}'.format(i.name))
+        validated = False
+
+    def _validate_flavor_exists(self, field, flavor):
+        global validated
+
+        flavor = str(flavor)
+        lgr.debug('checking whether flavor {0} exists...'.format(flavor))
+        flavors = self.nova_client.flavors.list()
+        for f in flavors:
+            if flavor in f.name or flavor in f.human_id or flavor in f.id:
+                lgr.debug('flavor {0} exists'.format(flavor))
+                return
+        lgr.error('flavor {0} does not exist'.format(flavor))
+        lgr.info('list of available flavors:')
+        for f in flavors:
+            lgr.info('    {0}'.format(f.name))
+        validated = False
+
+    def _validate_floating_ip_quota(self):
+        global validated
+
+        lgr.debug('checking whether floating ips are available...')
+        floating_ips = self.neutron_client.floating_ips.list()
+        print floating_ips
+
+    def _validate_key_perms(self, field, key_path):
+        global validated
+
+        lgr.debug('checking whether key {0} has the right permissions'
+                  .format(key_path))
+        # from os.path import expanduser, dirname
+        home = os.path.expanduser("~")
+        if '~' in key_path:
+            lgr.debug('replacing ~ with home dir')
+            key_path = key_path.replace('~', home)
+        if not oct(os.stat(key_path)[ST_MODE])[-3:] == VALID_KEY_PERMS:
+            validated = False
 
 
 class CosmoOnOpenStackBootstrapper(object):
