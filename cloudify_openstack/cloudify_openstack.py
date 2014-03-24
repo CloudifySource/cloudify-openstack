@@ -28,6 +28,7 @@ import json
 import socket
 import paramiko
 import tempfile
+import urllib
 import sys
 from stat import ST_MODE
 from os.path import expanduser
@@ -70,7 +71,7 @@ CLOUDIFY_PACKAGES_PATH = '/cloudify'
 CLOUDIFY_COMPONENTS_PACKAGE_PATH = '/cloudify3-components'
 CLOUDIFY_PACKAGE_PATH = '/cloudify3'
 
-VALID_KEY_PERMS = '600'
+VALID_KEY_PERMS = ['600']
 
 verbose_output = False
 
@@ -250,15 +251,15 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
     keys_cl = connector.get_keystone_client()
     verifier = OpenStackValidator(nova_cl, neutron_cl, keys_cl)
 
-    # keystone_config = provider_config['keystone']
+    keystone_config = provider_config['keystone']
     # networking_config = provider_config['networking']
-    compute_config = provider_config['compute']
+    # compute_config = provider_config['compute']
     # cloudify_config = provider_config['cloudify']
-    mgmt_server_config = compute_config['management_server']
-    agent_server_config = compute_config['agent_servers']
+    # mgmt_server_config = compute_config['management_server']
+    # agent_server_config = compute_config['agent_servers']
     # mgmt_instance_config = mgmt_server_config['instance']
-    mgmt_keypair_config = mgmt_server_config['management_keypair']
-    agent_keypair_config = agent_server_config['agents_keypair']
+    # mgmt_keypair_config = mgmt_server_config['management_keypair']
+    # agent_keypair_config = agent_server_config['agents_keypair']
 
     # lgr.info('validating provider configuration file...')
     # verifier._validate_cidr(
@@ -269,6 +270,9 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
     #     networking_config['management_security_group']['cidr'])
     # verifier._validate_schema(provider_config, schema)
     # lgr.info('validating provider resources...')
+    # verifier._validate_url_accessible(
+    #     'networking.network_url',
+    #     networking_config['neutron_url'])
     # verifier._validate_image_exists(
     #     'compute.management_server.instance.image',
     #     mgmt_server_config['instance']['image'])
@@ -276,20 +280,22 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
     #     'compute.management_server.instance.flavor',
     #     mgmt_server_config['instance']['flavor'])
     # if networking_config['neutron_supported_region:']:
-    # verifier._validate_floating_ip_quota()
-    # verifier._validate_instance_quota()
-    verifier._validate_key_perms(
-        'compute.management_server.management_keypair',
-        mgmt_keypair_config['auto_generated']['private_key_target_path'])
-    verifier._validate_key_perms(
-        'compute.agent_servers.agents_keypair',
-        agent_keypair_config['auto_generated']['private_key_target_path'])
-    # verifier._validate_package_exists(
+    # if 'auto_generated' in mgmt_keypair_config:
+    #     verifier._validate_key_perms(
+    #         'compute.management_server.management_keypair',
+    #         mgmt_keypair_config['auto_generated']['private_key_target_path'])
+    # if 'auto_generated' in agent_keypair_config:
+    #     verifier._validate_key_perms(
+    #         'compute.agent_servers.agents_keypair',
+    #         agent_keypair_config['auto_generated']['private_key_target_path'])  # NOQA
+    # verifier._validate_url_accessible(
     #     'cloudify.cloudify_components_package_url',
     #     cloudify_config['cloudify_components_package_url'])
-    # verifier._validate_package_exists(
+    # verifier._validate_url_accessible(
     #     'cloudify.cloudify_package_url',
     #     cloudify_config['cloudify_package_url'])
+    # verifier._validate_floating_ip_quota()
+    verifier._validate_instance_quota(keystone_config['tenant_name'])
 
     if validated:
         lgr.info('provider configuration file validated successfully')
@@ -368,21 +374,41 @@ class OpenStackValidator:
         global validated
 
         lgr.debug('checking whether floating ips are available...')
-        floating_ips = self.neutron_client.floating_ips.list()
-        print floating_ips
+        ips = self.nova_client.floating_ips.list()
+        for ip in ips:
+            print ip
+
+    def _validate_instance_quota(self, tenant):
+        global validated
+
+        lgr.debug('checking whether instances are available...')
+        # print self.keystone_client.roles.list()
 
     def _validate_key_perms(self, field, key_path):
         global validated
 
         lgr.debug('checking whether key {0} has the right permissions'
                   .format(key_path))
-        # from os.path import expanduser, dirname
         home = os.path.expanduser("~")
-        if '~' in key_path:
-            lgr.debug('replacing ~ with home dir')
+        if key_path.startswith('~'):
             key_path = key_path.replace('~', home)
-        if not oct(os.stat(key_path)[ST_MODE])[-3:] == VALID_KEY_PERMS:
+        if not oct(os.stat(key_path)[ST_MODE])[-3:] in VALID_KEY_PERMS:
+            lgr.error('ssh key {0} does not have the correct permissions'
+                      '({1}).'.format(key_path, VALID_KEY_PERMS))
             validated = False
+            return
+        lgr.debug('ssh key {0} has the correct permissions'.format(key_path))
+
+    def _validate_url_accessible(self, field, package_url):
+        global validated
+
+        lgr.debug('checking whether {0} is accessible'.format(package_url))
+        status = urllib.urlopen(package_url).getcode()
+        if not status == 200:
+            lgr.error('{0} is not accessible'.format(package_url))
+            validated = False
+            return
+        lgr.debug('{0} is accessible'.format(package_url))
 
 
 class CosmoOnOpenStackBootstrapper(object):
