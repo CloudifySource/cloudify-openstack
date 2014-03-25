@@ -254,60 +254,55 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
 
     # keystone_config = provider_config['keystone']
     networking_config = provider_config['networking']
-    # compute_config = provider_config['compute']
-    # cloudify_config = provider_config['cloudify']
-    # mgmt_server_config = compute_config['management_server']
-    # agent_server_config = compute_config['agent_servers']
+    compute_config = provider_config['compute']
+    cloudify_config = provider_config['cloudify']
+    mgmt_server_config = compute_config['management_server']
+    agent_server_config = compute_config['agent_servers']
     # mgmt_instance_config = mgmt_server_config['instance']
-    # mgmt_keypair_config = mgmt_server_config['management_keypair']
-    # agent_keypair_config = agent_server_config['agents_keypair']
+    mgmt_keypair_config = mgmt_server_config['management_keypair']
+    agent_keypair_config = agent_server_config['agents_keypair']
 
-    # lgr.info('validating provider configuration file...')
-    # verifier._validate_cidr_syntax(
-    #     'networking.subnet.cidr',
-    #     networking_config['subnet']['cidr'])
-    # verifier._validate_cidr_syntax(
-    #     'networking.management_security_group.cidr',
-    #     networking_config['management_security_group']['cidr'])
-    # verifier._validate_schema(provider_config, schema)
-    # lgr.info('validating provider resources...')
-    # verifier._validate_url_accessible(
-    #     'networking.network_url',
-    #     networking_config['neutron_url'])
-    # verifier._validate_image_exists(
-    #     'compute.management_server.instance.image',
-    #     mgmt_server_config['instance']['image'])
-    # verifier._validate_flavor_exists(
-    #     'compute.management_server.instance.flavor',
-    #     mgmt_server_config['instance']['flavor'])
-    # if networking_config['neutron_supported_region:']:
-    # if 'auto_generated' in mgmt_keypair_config:
-    #     verifier._validate_key_perms(
-    #         'compute.management_server.management_keypair',
-    #         mgmt_keypair_config['auto_generated']['private_key_target_path'])
-    # if 'auto_generated' in agent_keypair_config:
-    #     verifier._validate_key_perms(
-    #         'compute.agent_servers.agents_keypair',
-    #         agent_keypair_config['auto_generated']['private_key_target_path'])  # NOQA
-    # verifier._validate_url_accessible(
-    #     'cloudify.cloudify_components_package_url',
-    #     cloudify_config['cloudify_components_package_url'])
-    # verifier._validate_url_accessible(
-    #     'cloudify.cloudify_package_url',
-    #     cloudify_config['cloudify_package_url'])
-    # verifier._validate_floating_ip()
-    # verifier._validate_instance_quota()
-    # verifier._validate_subnet_exists(networking_config['subnet']['cidr'])
-# verifier._validate_network_exists(networking_config['int_network']['name'])
-    # verifier._validate_neutron_resource(networking_config['router'],
-    #                                     resource_type='router',
-    #                                     method='list_routers')
-    # verifier._validate_neutron_resource(networking_config['subnet'],
-    #                                     resource_type='subnet',
-    #                                     method='list_subnets')
-    # verifier._validate_neutron_resource(networking_config['int_network'],
-    #                                     resource_type='network',
-    #                                     method='list_networks')
+    lgr.info('validating provider configuration file...')
+    verifier._validate_cidr_syntax(
+        'networking.subnet.cidr',
+        networking_config['subnet']['cidr'])
+    verifier._validate_cidr_syntax(
+        'networking.management_security_group.cidr',
+        networking_config['management_security_group']['cidr'])
+    verifier._validate_schema(provider_config, schema)
+    lgr.info('validating provider resources...')
+    verifier._validate_url_accessible(
+        'networking.network_url',
+        networking_config['neutron_url'])
+    verifier._validate_image_exists(
+        'compute.management_server.instance.image',
+        mgmt_server_config['instance']['image'])
+    verifier._validate_flavor_exists(
+        'compute.management_server.instance.flavor',
+        mgmt_server_config['instance']['flavor'])
+    verifier._validate_key_perms(
+        'compute.management_server.management_keypair',
+        mgmt_keypair_config['auto_generated']['private_key_target_path'])
+    verifier._validate_key_perms(
+        'compute.agent_servers.agents_keypair',
+        agent_keypair_config['auto_generated']['private_key_target_path'])  # NOQA
+    verifier._validate_url_accessible(
+        'cloudify.cloudify_components_package_url',
+        cloudify_config['cloudify_components_package_url'])
+    verifier._validate_url_accessible(
+        'cloudify.cloudify_package_url',
+        cloudify_config['cloudify_package_url'])
+    verifier._validate_subnet_exists(networking_config['subnet']['cidr'])
+    verifier._validate_network_exists(networking_config['int_network']['name'])
+    verifier._validate_neutron_resource(networking_config['router'],
+                                        resource_type='router',
+                                        method='list_routers')
+    verifier._validate_neutron_resource(networking_config['subnet'],
+                                        resource_type='subnet',
+                                        method='list_subnets')
+    verifier._validate_neutron_resource(networking_config['int_network'],
+                                        resource_type='network',
+                                        method='list_networks')
     verifier._validate_neutron_resource(
         networking_config['agents_security_group'],
         resource_type='security_group',
@@ -316,6 +311,13 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
         networking_config['management_security_group'],
         resource_type='security_group',
         method='list_security_groups')
+    # TODO:
+    # verifier._validate_security_rules()
+    # verifier._validate_
+    # verifier._validate_floating_ip()
+    # verifier._validate_instance_quota()
+    #
+    # verifier._validate_test()
 
     if validated:
         lgr.info('provider configuration validated successfully')
@@ -341,11 +343,14 @@ class OpenStackValidator:
         self.neutron_client = neutron_client
         self.keystone_client = keystone_client
 
-    def _validate_nova_quota(self, resource):
+    def _validate_test(self):
         global validated
 
-        limits = self.nova_client.limits.get()
-        print type(limits)
+        images = self.nova_client.images.list()
+        for image in images:
+            print dir(image)
+            print image.minRam, image.minDisk, image.status
+            sys.exit()
         # quotas = self.nova_client.show_quota(
         #     self.keystone_client.tenant_id)['quota']
         # print json.dumps(quotas, sort_keys=True,
@@ -357,8 +362,8 @@ class OpenStackValidator:
 
         quotas = self.neutron_client.show_quota(
             self.keystone_client.tenant_id)['quota']
-        print json.dumps(quotas, sort_keys=True,
-                         indent=4, separators=(',', ': '))
+        # print json.dumps(quotas, sort_keys=True,
+        #                  indent=4, separators=(',', ': '))
         return quotas[resource]
 
     def _validate_neutron_resource(self, resource_config, resource_type,
