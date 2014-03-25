@@ -240,6 +240,9 @@ def _mkdir_p(path):
 
 def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
                      is_verbose_output=False):
+    """
+    all validation method names should be self explanatory.
+    """
     _set_global_verbosity_level(is_verbose_output)
 
     global validated
@@ -253,70 +256,78 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
                                   nova_cl, neutron_cl, keys_cl)
 
     # keystone_config = provider_config['keystone']
-    networking_config = provider_config['networking']
+    # networking_config = provider_config['networking']
     compute_config = provider_config['compute']
-    cloudify_config = provider_config['cloudify']
+    # cloudify_config = provider_config['cloudify']
     mgmt_server_config = compute_config['management_server']
-    agent_server_config = compute_config['agent_servers']
+    # agent_server_config = compute_config['agent_servers']
     # mgmt_instance_config = mgmt_server_config['instance']
-    mgmt_keypair_config = mgmt_server_config['management_keypair']
-    agent_keypair_config = agent_server_config['agents_keypair']
+    # mgmt_keypair_config = mgmt_server_config['management_keypair']
+    # agent_keypair_config = agent_server_config['agents_keypair']
 
     lgr.info('validating provider configuration file...')
-    verifier._validate_cidr_syntax(
-        'networking.subnet.cidr',
-        networking_config['subnet']['cidr'])
-    verifier._validate_cidr_syntax(
-        'networking.management_security_group.cidr',
-        networking_config['management_security_group']['cidr'])
-    verifier._validate_schema(provider_config, schema)
-    lgr.info('validating provider resources...')
-    verifier._validate_url_accessible(
-        'networking.network_url',
-        networking_config['neutron_url'])
-    verifier._validate_image_exists(
-        'compute.management_server.instance.image',
-        mgmt_server_config['instance']['image'])
-    verifier._validate_flavor_exists(
-        'compute.management_server.instance.flavor',
-        mgmt_server_config['instance']['flavor'])
-    verifier._validate_key_perms(
-        'compute.management_server.management_keypair',
-        mgmt_keypair_config['auto_generated']['private_key_target_path'])
-    verifier._validate_key_perms(
-        'compute.agent_servers.agents_keypair',
-        agent_keypair_config['auto_generated']['private_key_target_path'])  # NOQA
-    verifier._validate_url_accessible(
-        'cloudify.cloudify_components_package_url',
-        cloudify_config['cloudify_components_package_url'])
-    verifier._validate_url_accessible(
-        'cloudify.cloudify_package_url',
-        cloudify_config['cloudify_package_url'])
-    verifier._validate_subnet_exists(networking_config['subnet']['cidr'])
-    verifier._validate_network_exists(networking_config['int_network']['name'])
-    verifier._validate_neutron_resource(networking_config['router'],
-                                        resource_type='router',
-                                        method='list_routers')
-    verifier._validate_neutron_resource(networking_config['subnet'],
-                                        resource_type='subnet',
-                                        method='list_subnets')
-    verifier._validate_neutron_resource(networking_config['int_network'],
-                                        resource_type='network',
-                                        method='list_networks')
-    verifier._validate_neutron_resource(
-        networking_config['agents_security_group'],
-        resource_type='security_group',
-        method='list_security_groups')
-    verifier._validate_neutron_resource(
-        networking_config['management_security_group'],
-        resource_type='security_group',
-        method='list_security_groups')
+    # verifier._validate_cidr_syntax(
+    #     'networking.subnet.cidr',
+    #     networking_config['subnet']['cidr'])
+    # verifier._validate_cidr_syntax(
+    #     'networking.management_security_group.cidr',
+    #     networking_config['management_security_group']['cidr'])
+    # verifier._validate_schema(provider_config, schema)
+    # lgr.info('validating provider resources...')
+    # verifier._validate_url_accessible(
+    #     'networking.network_url',
+    #     networking_config['neutron_url'])
+    # verifier._validate_image_exists(
+    #     'compute.management_server.instance.image',
+    #     mgmt_server_config['instance']['image'])
+    # verifier._validate_flavor_exists(
+    #     'compute.management_server.instance.flavor',
+    #     mgmt_server_config['instance']['flavor'])
+    # verifier._validate_key_perms(
+    #     'compute.management_server.management_keypair',
+    #     mgmt_keypair_config['auto_generated']['private_key_target_path'])
+    # verifier._validate_key_perms(
+    #     'compute.agent_servers.agents_keypair',
+    #     agent_keypair_config['auto_generated']['private_key_target_path'])  # NOQA
+    # verifier._validate_url_accessible(
+    #     'cloudify.cloudify_components_package_url',
+    #     cloudify_config['cloudify_components_package_url'])
+    # verifier._validate_url_accessible(
+    #     'cloudify.cloudify_package_url',
+    #     cloudify_config['cloudify_package_url'])
+    # verifier._validate_subnet_exists(networking_config['subnet']['cidr'])
+# verifier._validate_network_exists(networking_config['int_network']['name'])
+    # verifier._validate_neutron_resource(
+    #     networking_config['router'],
+    #     resource_type='router',
+    #     method='list_routers')
+    # verifier._validate_neutron_resource(
+    #     networking_config['subnet'],
+    #     resource_type='subnet',
+    #     method='list_subnets')
+    # verifier._validate_neutron_resource(
+    #     networking_config['int_network'],
+    #     resource_type='network',
+    #     method='list_networks')
+    # verifier._validate_neutron_resource(
+    #     networking_config['agents_security_group'],
+    #     resource_type='security_group',
+    #     method='list_security_groups')
+    # verifier._validate_neutron_resource(
+    #     networking_config['management_security_group'],
+    #     resource_type='security_group',
+    #     method='list_security_groups')
+    if 'floating_ip' in mgmt_server_config.keys():
+        verifier._validate_cidr_syntax(
+            'compute.management_server.floating_ip',
+            mgmt_server_config['floating_ip'])
+        verifier._validate_floating_ip(
+            mgmt_server_config['floating_ip'])
+    else:
+        verifier._validate_floating_ip(False)
     # TODO:
     # verifier._validate_security_rules()
-    # verifier._validate_
-    # verifier._validate_floating_ip()
     # verifier._validate_instance_quota()
-    #
     # verifier._validate_test()
 
     if validated:
@@ -366,6 +377,42 @@ class OpenStackValidator:
         #                  indent=4, separators=(',', ': '))
         return quotas[resource]
 
+    def _validate_floating_ip(self, floating_ip):
+        global validated
+
+        ips = self.neutron_client.list_floatingips()
+        ips_amount = len(ips['floatingips'])
+        if floating_ip:
+            for ip in ips['floatingips']:
+                if ip['floating_ip_address'] == floating_ip:
+                    lgr.debug('floating ip {0} is allocated'
+                              .format(floating_ip))
+                    return
+                else:
+                    lgr.error('floating ip {0} is not allocated.'
+                              ' please provide an allocated address'
+                              ' or comment the floating_ip line in the config'
+                              ' and one will be allocated for you.'
+                              .format(floating_ip))
+                    validated = False
+                    return
+        else:
+            lgr.debug('checking whether quota allows allocation'
+                      ' of new floating ips')
+            ips_quota = self._validate_neutron_quota('floatingip')
+            if ips_amount < ips_quota:
+                lgr.debug('a new ip can be allocated.'
+                          ' provisioned ips: {1}, quota: {2}'
+                          .format(floating_ip,
+                                  ips_amount, ips_quota))
+            else:
+                lgr.error('an ip cannot be allocated due'
+                          ' to quota limitations.'
+                          ' privisioned {1}s: {2}, quota: {3}'
+                          .format(floating_ip,
+                                  ips_amount, ips_quota))
+                validated = False
+
     def _validate_neutron_resource(self, resource_config, resource_type,
                                    method):
         global validated
@@ -404,8 +451,8 @@ class OpenStackValidator:
                           .format(resource_config['name'], resource_type,
                                   resource_amount, resource_quota))
             else:
-                lgr.error('resource {0} cannot be created because'
-                          ' of quota limitations.'
+                lgr.error('resource {0} cannot be created due'
+                          ' to quota limitations.'
                           ' privisioned {1}s: {2}, quota: {3}'
                           .format(resource_config['name'], resource_type,
                                   resource_amount, resource_quota))
@@ -414,10 +461,11 @@ class OpenStackValidator:
     def _validate_cidr_syntax(self, field, cidr):
         global validated
 
-        lgr.debug('checking whether {0} is a valid cidr...'.format(cidr))
+        lgr.debug('checking whether {0} is a valid address range...'
+                  .format(cidr))
         try:
             IP(cidr)
-            lgr.debug('{0} is a valid cidr'.format(cidr))
+            lgr.debug('{0} is a valid address range.'.format(cidr))
         except ValueError as e:
             validated = False
             lgr.error('config file validation error found at key:'
@@ -1227,6 +1275,7 @@ class OpenStackSubnetCreator(CreateOrEnsureExistsNeutron):
 
 
 class OpenStackFloatingIpCreator():
+
     def __init__(self, connector):
         self.neutron_client = connector.get_neutron_client()
 
