@@ -249,10 +249,11 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
     nova_cl = connector.get_nova_client()
     neutron_cl = connector.get_neutron_client()
     keys_cl = connector.get_keystone_client()
-    verifier = OpenStackValidator(nova_cl, neutron_cl, keys_cl)
+    verifier = OpenStackValidator(provider_config,
+                                  nova_cl, neutron_cl, keys_cl)
 
-    keystone_config = provider_config['keystone']
-    # networking_config = provider_config['networking']
+    # keystone_config = provider_config['keystone']
+    networking_config = provider_config['networking']
     # compute_config = provider_config['compute']
     # cloudify_config = provider_config['cloudify']
     # mgmt_server_config = compute_config['management_server']
@@ -262,10 +263,10 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
     # agent_keypair_config = agent_server_config['agents_keypair']
 
     # lgr.info('validating provider configuration file...')
-    # verifier._validate_cidr(
+    # verifier._validate_cidr_syntax(
     #     'networking.subnet.cidr',
     #     networking_config['subnet']['cidr'])
-    # verifier._validate_cidr(
+    # verifier._validate_cidr_syntax(
     #     'networking.management_security_group.cidr',
     #     networking_config['management_security_group']['cidr'])
     # verifier._validate_schema(provider_config, schema)
@@ -294,39 +295,118 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
     # verifier._validate_url_accessible(
     #     'cloudify.cloudify_package_url',
     #     cloudify_config['cloudify_package_url'])
-    # verifier._validate_floating_ip_quota()
-    verifier._validate_instance_quota(keystone_config['tenant_name'])
+    # verifier._validate_floating_ip()
+    # verifier._validate_instance_quota()
+    # verifier._validate_subnet_exists(networking_config['subnet']['cidr'])
+# verifier._validate_network_exists(networking_config['int_network']['name'])
+    # verifier._validate_neutron_resource(networking_config['router'],
+    #                                     resource_type='router',
+    #                                     method='list_routers')
+    # verifier._validate_neutron_resource(networking_config['subnet'],
+    #                                     resource_type='subnet',
+    #                                     method='list_subnets')
+    # verifier._validate_neutron_resource(networking_config['int_network'],
+    #                                     resource_type='network',
+    #                                     method='list_networks')
+    verifier._validate_neutron_resource(
+        networking_config['agents_security_group'],
+        resource_type='security_group',
+        method='list_security_groups')
+    verifier._validate_neutron_resource(
+        networking_config['management_security_group'],
+        resource_type='security_group',
+        method='list_security_groups')
 
     if validated:
-        lgr.info('provider configuration file validated successfully')
+        lgr.info('provider configuration validated successfully')
     else:
         lgr.error('provider configuration validation failed!')
         sys.exit(1)
 
 
 class OpenStackValidator:
+    """
+    for every mandatory config element, we'll verify access or existence.
 
-    def __init__(self, nova_client, neutron_client, keystone_client):
+    for every config element that is marked as use_existing = True
+    we'll verify that the element exists and if it doesn't, alert.
+
+    for every config element that is marked as use_existing = False
+    we'll check if the element exists and if it doesn't, check if there's
+    quota to create the element, and if there isn't, alert.
+    """
+    def __init__(self, provider_config,
+                 nova_client, neutron_client, keystone_client):
         self.nova_client = nova_client
         self.neutron_client = neutron_client
         self.keystone_client = keystone_client
 
-    def _validate_schema(self, provider_config, schema):
+    def _validate_nova_quota(self, resource):
         global validated
 
-        lgr.debug('validating config file against provided schema...')
-        v = Draft4Validator(schema)
-        if v.iter_errors(provider_config):
-            errors = ';\n'.join('config file validation error found at key:'
-                                ' %s, %s' % ('.'.join(e.path), e.message)
-                                for e in v.iter_errors(provider_config))
-        try:
-            v.validate(provider_config)
-        except ValidationError:
-            validated = False
-            lgr.error('{0}'.format(errors))
+        limits = self.nova_client.limits.get()
+        print type(limits)
+        # quotas = self.nova_client.show_quota(
+        #     self.keystone_client.tenant_id)['quota']
+        # print json.dumps(quotas, sort_keys=True,
+        #                  indent=4, separators=(',', ': '))
+        # return quotas[resource]
 
-    def _validate_cidr(self, field, cidr):
+    def _validate_neutron_quota(self, resource):
+        global validated
+
+        quotas = self.neutron_client.show_quota(
+            self.keystone_client.tenant_id)['quota']
+        print json.dumps(quotas, sort_keys=True,
+                         indent=4, separators=(',', ': '))
+        return quotas[resource]
+
+    def _validate_neutron_resource(self, resource_config, resource_type,
+                                   method):
+        global validated
+
+        lgr.debug('checking whether {0} exists...'
+                  .format(resource_config['name']))
+        # resource_dict = self.neutron_client.list_routers()
+        resource_dict = getattr(self.neutron_client, method)()
+        resource_amount = len(resource_dict)
+        # print json.dumps(resource_dict, sort_keys=True,
+        #                  indent=4, separators=(',', ': '))
+        for type, all in resource_dict.iteritems():
+            for resource in all:
+                if resource['name'] == resource_config['name']:
+                    lgr.debug('{0} found in pool'
+                              .format(resource_config['name']))
+                    if not resource_config['use_existing']:
+                        lgr.debug('note that {0} exists. we will use it but to'
+                                  ' make sure you don\'t see this message'
+                                  ' again, please change use_existing to True'
+                                  ' for this resource.'
+                                  .format(resource_config['name']))
+                    return
+        if resource_config['use_existing']:
+            lgr.error('{0} does not exist in the pool but is marked as'
+                      ' use_existing = True. please provide an existing'
+                      ' resource name or change use_existing = False'
+                      ' to automatically create a new resource.'
+                      .format(resource_config['name']))
+            validated = False
+        else:
+            resource_quota = self._validate_neutron_quota(resource_type)
+            if resource_amount < resource_quota:
+                lgr.debug('resource {0} can be created.'
+                          ' privisioned {1}s: {2}, quota: {3}'
+                          .format(resource_config['name'], resource_type,
+                                  resource_amount, resource_quota))
+            else:
+                lgr.error('resource {0} cannot be created because'
+                          ' of quota limitations.'
+                          ' privisioned {1}s: {2}, quota: {3}'
+                          .format(resource_config['name'], resource_type,
+                                  resource_amount, resource_quota))
+                validated = False
+
+    def _validate_cidr_syntax(self, field, cidr):
         global validated
 
         lgr.debug('checking whether {0} is a valid cidr...'.format(cidr))
@@ -378,11 +458,39 @@ class OpenStackValidator:
         for ip in ips:
             print ip
 
-    def _validate_instance_quota(self, tenant):
+    def _validate_instance_quota(self):
         global validated
 
         lgr.debug('checking whether instances are available...')
-        # print self.keystone_client.roles.list()
+
+    def _validate_subnet_exists(self, cidr):
+        global validated
+
+        lgr.debug('checking whether subnet {0} exists...'.format(cidr))
+        # print json.dumps(self.neutron_client.list_subnets(), sort_keys=True,
+        #                  indent=4, separators=(',', ': '))
+        for subnet in self.neutron_client.list_subnets()['subnets']:
+            if subnet['cidr'] == cidr:
+                lgr.debug('subnet {0} found in subnets pool'.format(cidr))
+                return
+        lgr.error('subnet {0} does not exist in the subnets pool'.format(cidr))
+        validated = False
+
+    def _validate_network_exists(self, network_name):
+        global validated
+
+        lgr.debug('checking whether network {0} exists...'
+                  .format(network_name))
+        # print json.dumps(self.neutron_client.list_networks(), sort_keys=True,
+        #                  indent=4, separators=(',', ': '))
+        for network in self.neutron_client.list_networks()['networks']:
+            if network['name'] == network_name:
+                lgr.debug('network {0} found in networks pool'
+                          .format(network_name))
+                return
+        lgr.error('network {0} does not exist in the networks pool'
+                  .format(network_name))
+        validated = False
 
     def _validate_key_perms(self, field, key_path):
         global validated
@@ -409,6 +517,21 @@ class OpenStackValidator:
             validated = False
             return
         lgr.debug('{0} is accessible'.format(package_url))
+
+    def _validate_schema(self, provider_config, schema):
+        global validated
+
+        lgr.debug('validating config file against provided schema...')
+        v = Draft4Validator(schema)
+        if v.iter_errors(provider_config):
+            errors = ';\n'.join('config file validation error found at key:'
+                                ' %s, %s' % ('.'.join(e.path), e.message)
+                                for e in v.iter_errors(provider_config))
+        try:
+            v.validate(provider_config)
+        except ValidationError:
+            validated = False
+            lgr.error('{0}'.format(errors))
 
 
 class CosmoOnOpenStackBootstrapper(object):
