@@ -51,7 +51,7 @@ import novaclient.v1_1.client as nova_client
 import neutronclient.neutron.client as neutron_client
 
 
-EP_FLAG = 'use_existing'
+CREATE_IF_MISSING = 'create_if_missing'
 
 EXTERNAL_MGMT_PORTS = (22, 8100)  # SSH, REST service
 INTERNAL_MGMT_PORTS = (5555, 5672, 53229)  # Riemann, RabbitMQ, FileServer
@@ -127,25 +127,25 @@ def bootstrap(config_path=None, is_verbose_output=False,
     provider_config = _read_config(config_path)
     _validate_config(provider_config)
 
-    # connector = OpenStackConnector(provider_config)
-    # network_creator = OpenStackNetworkCreator(connector)
-    # subnet_creator = OpenStackSubnetCreator(connector)
-    # router_creator = OpenStackRouterCreator(connector)
-    # floating_ip_creator = OpenStackFloatingIpCreator(connector)
-    # keypair_creator = OpenStackKeypairCreator(connector)
-    # server_creator = OpenStackServerCreator(connector)
-    # server_killer = OpenStackServerKiller(connector)
-    # if provider_config['networking']['neutron_supported_region']:
-    #     sg_creator = OpenStackNeutronSecurityGroupCreator(connector)
-    # else:
-    #     sg_creator = OpenStackNovaSecurityGroupCreator(connector)
-    # bootstrapper = CosmoOnOpenStackBootstrapper(
-    #     provider_config, network_creator, subnet_creator, router_creator,
-    #     sg_creator, floating_ip_creator, keypair_creator, server_creator,
-    #     server_killer)
-    # mgmt_ip = bootstrapper.do(provider_config, bootstrap_using_script,
-    #                           keep_up, dev_mode)
-    mgmt_ip = '10.0.0.1'
+    connector = OpenStackConnector(provider_config)
+    network_creator = OpenStackNetworkCreator(connector)
+    subnet_creator = OpenStackSubnetCreator(connector)
+    router_creator = OpenStackRouterCreator(connector)
+    floating_ip_creator = OpenStackFloatingIpCreator(connector)
+    keypair_creator = OpenStackKeypairCreator(connector)
+    server_creator = OpenStackServerCreator(connector)
+    server_killer = OpenStackServerKiller(connector)
+    if provider_config['networking']['neutron_supported_region']:
+        sg_creator = OpenStackNeutronSecurityGroupCreator(connector)
+    else:
+        sg_creator = OpenStackNovaSecurityGroupCreator(connector)
+    bootstrapper = CosmoOnOpenStackBootstrapper(
+        provider_config, network_creator, subnet_creator, router_creator,
+        sg_creator, floating_ip_creator, keypair_creator, server_creator,
+        server_killer)
+    mgmt_ip = bootstrapper.do(provider_config, bootstrap_using_script,
+                              keep_up, dev_mode)
+    # mgmt_ip = '10.0.0.1'
     return mgmt_ip
 
 
@@ -246,77 +246,65 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
     _set_global_verbosity_level(is_verbose_output)
 
     global validated
+    # assume validations successful
     validated = True
 
+    # get openstack clients
     connector = OpenStackConnector(provider_config)
-    nova_cl = connector.get_nova_client()
-    neutron_cl = connector.get_neutron_client()
-    keys_cl = connector.get_keystone_client()
+    # get verifier object
     verifier = OpenStackValidator(provider_config,
-                                  nova_cl, neutron_cl, keys_cl)
+                                  connector.get_nova_client(),
+                                  connector.get_neutron_client(),
+                                  connector.get_keystone_client())
 
+    # get config
     # keystone_config = provider_config['keystone']
-    # networking_config = provider_config['networking']
+    networking_config = provider_config['networking']
     compute_config = provider_config['compute']
-    # cloudify_config = provider_config['cloudify']
+    cloudify_config = provider_config['cloudify']
     mgmt_server_config = compute_config['management_server']
-    # agent_server_config = compute_config['agent_servers']
+    agent_server_config = compute_config['agent_servers']
     # mgmt_instance_config = mgmt_server_config['instance']
-    # mgmt_keypair_config = mgmt_server_config['management_keypair']
-    # agent_keypair_config = agent_server_config['agents_keypair']
+    mgmt_keypair_config = mgmt_server_config['management_keypair']
+    agent_keypair_config = agent_server_config['agents_keypair']
 
-    lgr.info('validating provider configuration file...')
-    # verifier._validate_cidr_syntax(
-    #     'networking.subnet.cidr',
-    #     networking_config['subnet']['cidr'])
-    # verifier._validate_cidr_syntax(
-    #     'networking.management_security_group.cidr',
-    #     networking_config['management_security_group']['cidr'])
-    # verifier._validate_schema(provider_config, schema)
-    # lgr.info('validating provider resources...')
-    # verifier._validate_url_accessible(
-    #     'networking.network_url',
-    #     networking_config['neutron_url'])
-    # verifier._validate_image_exists(
-    #     'compute.management_server.instance.image',
-    #     mgmt_server_config['instance']['image'])
-    # verifier._validate_flavor_exists(
-    #     'compute.management_server.instance.flavor',
-    #     mgmt_server_config['instance']['flavor'])
-    # verifier._validate_key_perms(
-    #     'compute.management_server.management_keypair',
-    #     mgmt_keypair_config['auto_generated']['private_key_target_path'])
-    # verifier._validate_key_perms(
-    #     'compute.agent_servers.agents_keypair',
-    #     agent_keypair_config['auto_generated']['private_key_target_path'])  # NOQA
-    # verifier._validate_url_accessible(
-    #     'cloudify.cloudify_components_package_url',
-    #     cloudify_config['cloudify_components_package_url'])
-    # verifier._validate_url_accessible(
-    #     'cloudify.cloudify_package_url',
-    #     cloudify_config['cloudify_package_url'])
-    # verifier._validate_subnet_exists(networking_config['subnet']['cidr'])
-# verifier._validate_network_exists(networking_config['int_network']['name'])
-    # verifier._validate_neutron_resource(
-    #     networking_config['router'],
-    #     resource_type='router',
-    #     method='list_routers')
-    # verifier._validate_neutron_resource(
-    #     networking_config['subnet'],
-    #     resource_type='subnet',
-    #     method='list_subnets')
-    # verifier._validate_neutron_resource(
-    #     networking_config['int_network'],
-    #     resource_type='network',
-    #     method='list_networks')
-    # verifier._validate_neutron_resource(
-    #     networking_config['agents_security_group'],
-    #     resource_type='security_group',
-    #     method='list_security_groups')
-    # verifier._validate_neutron_resource(
-    #     networking_config['management_security_group'],
-    #     resource_type='security_group',
-    #     method='list_security_groups')
+    # validates
+    lgr.info('validating provider configuration and resources...')
+
+    lgr.info('validating provider configuration...')
+    verifier._validate_cidr_syntax(
+        'networking.subnet.cidr',
+        networking_config['subnet']['cidr'])
+    verifier._validate_cidr_syntax(
+        'networking.management_security_group.cidr',
+        networking_config['management_security_group']['cidr'])
+    verifier._validate_schema(provider_config, schema)
+
+    lgr.info('validating keystone resources...')
+    lgr.info('validating networking resources...')
+    verifier._validate_url_accessible(
+        'networking.network_url',
+        networking_config['neutron_url'])
+    verifier._validate_neutron_resource(
+        networking_config['router'],
+        resource_type='router',
+        method='list_routers')
+    verifier._validate_neutron_resource(
+        networking_config['subnet'],
+        resource_type='subnet',
+        method='list_subnets')
+    verifier._validate_neutron_resource(
+        networking_config['int_network'],
+        resource_type='network',
+        method='list_networks')
+    verifier._validate_neutron_resource(
+        networking_config['agents_security_group'],
+        resource_type='security_group',
+        method='list_security_groups')
+    verifier._validate_neutron_resource(
+        networking_config['management_security_group'],
+        resource_type='security_group',
+        method='list_security_groups')
     if 'floating_ip' in mgmt_server_config.keys():
         verifier._validate_cidr_syntax(
             'compute.management_server.floating_ip',
@@ -324,16 +312,40 @@ def _validate_config(provider_config, schema=OPENSTACK_SCHEMA,
         verifier._validate_floating_ip(
             mgmt_server_config['floating_ip'])
     else:
-        verifier._validate_floating_ip(False)
+        verifier._validate_floating_ip(None)
+
+    lgr.info('validating compute resources...')
+    verifier._validate_image_exists(
+        'compute.management_server.instance.image',
+        mgmt_server_config['instance']['image'])
+    verifier._validate_flavor_exists(
+        'compute.management_server.instance.flavor',
+        mgmt_server_config['instance']['flavor'])
+    verifier._validate_key_perms(
+        'compute.management_server.management_keypair',
+        mgmt_keypair_config['auto_generated']['private_key_target_path'])
+    verifier._validate_key_perms(
+        'compute.agent_servers.agents_keypair',
+        agent_keypair_config['auto_generated']['private_key_target_path'])  # NOQA
+
+    lgr.info('validating cloudify resources...')
+    verifier._validate_url_accessible(
+        'cloudify.cloudify_components_package_url',
+        cloudify_config['cloudify_components_package_url'])
+    verifier._validate_url_accessible(
+        'cloudify.cloudify_package_url',
+        cloudify_config['cloudify_package_url'])
+
     # TODO:
+    # verifier._validate_keystone_service_exists('nova')
+    # verifier._validate_keystone_service_exists('neutron')
     # verifier._validate_security_rules()
     # verifier._validate_instance_quota()
-    # verifier._validate_test()
 
     if validated:
-        lgr.info('provider configuration validated successfully')
+        lgr.info('provider configuration and resources validated successfully')
     else:
-        lgr.error('provider configuration validation failed!')
+        lgr.error('provider configuration and resources validation failed!')
         sys.exit(1)
 
 
@@ -341,10 +353,10 @@ class OpenStackValidator:
     """
     for every mandatory config element, we'll verify access or existence.
 
-    for every config element that is marked as use_existing = True
+    for every config element that is marked as create_if_missing = False
     we'll verify that the element exists and if it doesn't, alert.
 
-    for every config element that is marked as use_existing = False
+    for every config element that is marked as create_if_missing = True
     we'll check if the element exists and if it doesn't, check if there's
     quota to create the element, and if there isn't, alert.
     """
@@ -354,21 +366,7 @@ class OpenStackValidator:
         self.neutron_client = neutron_client
         self.keystone_client = keystone_client
 
-    def _validate_test(self):
-        global validated
-
-        images = self.nova_client.images.list()
-        for image in images:
-            print dir(image)
-            print image.minRam, image.minDisk, image.status
-            sys.exit()
-        # quotas = self.nova_client.show_quota(
-        #     self.keystone_client.tenant_id)['quota']
-        # print json.dumps(quotas, sort_keys=True,
-        #                  indent=4, separators=(',', ': '))
-        # return quotas[resource]
-
-    def _validate_neutron_quota(self, resource):
+    def _get_neutron_quota(self, resource):
         global validated
 
         quotas = self.neutron_client.show_quota(
@@ -380,46 +378,51 @@ class OpenStackValidator:
     def _validate_floating_ip(self, floating_ip):
         global validated
 
+        lgr.debug('checking whether floating_ip {0} exists...'
+                  .format(floating_ip))
         ips = self.neutron_client.list_floatingips()
         ips_amount = len(ips['floatingips'])
-        if floating_ip:
+        if floating_ip is not None:
             for ip in ips['floatingips']:
                 if ip['floating_ip_address'] == floating_ip:
-                    lgr.debug('floating ip {0} is allocated'
+                    lgr.debug('VALIDATED:'
+                              'floating_ip {0} is allocated'
                               .format(floating_ip))
-                    return
                 else:
-                    lgr.error('floating ip {0} is not allocated.'
+                    lgr.error('VALIDATION ERROR:'
+                              'floating_ip {0} is not allocated.'
                               ' please provide an allocated address'
                               ' or comment the floating_ip line in the config'
                               ' and one will be allocated for you.'
                               .format(floating_ip))
+                    lgr.info('list of available floating ips:')
+                    for ip in ips['floatingips']:
+                        lgr.info('    {0}'.format(ip['floating_ip_address']))
                     validated = False
-                    return
         else:
             lgr.debug('checking whether quota allows allocation'
                       ' of new floating ips')
-            ips_quota = self._validate_neutron_quota('floatingip')
+            ips_quota = self._get_neutron_quota('floatingip')
             if ips_amount < ips_quota:
-                lgr.debug('a new ip can be allocated.'
+                lgr.debug('VALIDATED:'
+                          'a new ip can be allocated.'
                           ' provisioned ips: {1}, quota: {2}'
                           .format(floating_ip,
                                   ips_amount, ips_quota))
             else:
-                lgr.error('an ip cannot be allocated due'
+                lgr.error('VALIDATION ERROR:'
+                          'a floating ip cannot be allocated due'
                           ' to quota limitations.'
-                          ' privisioned {1}s: {2}, quota: {3}'
-                          .format(floating_ip,
-                                  ips_amount, ips_quota))
+                          ' privisioned ips: {1}, quota: {2}'
+                          .format(ips_amount, ips_quota))
                 validated = False
 
     def _validate_neutron_resource(self, resource_config, resource_type,
                                    method):
         global validated
 
-        lgr.debug('checking whether {0} exists...'
-                  .format(resource_config['name']))
-        # resource_dict = self.neutron_client.list_routers()
+        lgr.debug('checking whether {0} {1} exists...'
+                  .format(resource_type, resource_config['name']))
         resource_dict = getattr(self.neutron_client, method)()
         resource_amount = len(resource_dict)
         # print json.dumps(resource_dict, sort_keys=True,
@@ -427,35 +430,39 @@ class OpenStackValidator:
         for type, all in resource_dict.iteritems():
             for resource in all:
                 if resource['name'] == resource_config['name']:
-                    lgr.debug('{0} found in pool'
-                              .format(resource_config['name']))
-                    if not resource_config['use_existing']:
-                        lgr.debug('note that {0} exists. we will use it but to'
-                                  ' make sure you don\'t see this message'
-                                  ' again, please change use_existing to True'
-                                  ' for this resource.'
-                                  .format(resource_config['name']))
+                    lgr.debug('VALIDATED:'
+                              '{0} {1} found in pool'
+                              .format(resource_type, resource_config['name']))
                     return
-        if resource_config['use_existing']:
-            lgr.error('{0} does not exist in the pool but is marked as'
-                      ' use_existing = True. please provide an existing'
-                      ' resource name or change use_existing = False'
+        if not resource_config[CREATE_IF_MISSING]:
+            lgr.error('VALIDATION ERROR:'
+                      '{0} {1} does not exist in the pool but is marked as'
+                      ' create_if_missing = False. please provide an existing'
+                      ' resource name or change create_if_missing = True'
                       ' to automatically create a new resource.'
-                      .format(resource_config['name']))
+                      .format(resource_type, resource_config['name']))
+            lgr.info('list of available {0}s:'.format(resource_type))
+            for type, all in resource_dict.iteritems():
+                for resource in all:
+                    lgr.info('    {0}'.format(resource['name']))
             validated = False
         else:
-            resource_quota = self._validate_neutron_quota(resource_type)
+            resource_quota = self._get_neutron_quota(resource_type)
             if resource_amount < resource_quota:
-                lgr.debug('resource {0} can be created.'
-                          ' privisioned {1}s: {2}, quota: {3}'
-                          .format(resource_config['name'], resource_type,
-                                  resource_amount, resource_quota))
+                lgr.debug('VALIDATED:'
+                          '{0} {1} can be created.'
+                          ' privisioned {2}s: {3}, quota: {4}'
+                          .format(resource_type, resource_config['name'],
+                                  resource_type, resource_amount,
+                                  resource_quota))
             else:
-                lgr.error('resource {0} cannot be created due'
+                lgr.error('VALIDATION ERROR:'
+                          '{0} {1} cannot be created due'
                           ' to quota limitations.'
-                          ' privisioned {1}s: {2}, quota: {3}'
-                          .format(resource_config['name'], resource_type,
-                                  resource_amount, resource_quota))
+                          ' privisioned {2}s: {3}, quota: {4}'
+                          .format(resource_type, resource_config['name'],
+                                  resource_type, resource_amount,
+                                  resource_quota))
                 validated = False
 
     def _validate_cidr_syntax(self, field, cidr):
@@ -465,10 +472,12 @@ class OpenStackValidator:
                   .format(cidr))
         try:
             IP(cidr)
-            lgr.debug('{0} is a valid address range.'.format(cidr))
+            lgr.debug('VALIDATED:'
+                      '{0} is a valid address range.'.format(cidr))
         except ValueError as e:
             validated = False
-            lgr.error('config file validation error found at key:'
+            lgr.error('VALIDATION ERROR:'
+                      'config file validation error found at key:'
                       ' {0}. {1}'.format(field, e.message))
 
     def _validate_image_exists(self, field, image):
@@ -479,9 +488,11 @@ class OpenStackValidator:
         images = self.nova_client.images.list()
         for i in images:
             if image in i.name or image in i.human_id or image in i.id:
-                lgr.debug('image {0} exists'.format(image))
+                lgr.debug('VALIDATED:'
+                          'image {0} exists'.format(image))
                 return
-        lgr.error('image {0} does not exist'.format(image))
+        lgr.error('VALIDATION ERROR:'
+                  'image {0} does not exist'.format(image))
         lgr.info('list of available images:')
         for i in images:
             lgr.info('    {0}'.format(i.name))
@@ -495,55 +506,20 @@ class OpenStackValidator:
         flavors = self.nova_client.flavors.list()
         for f in flavors:
             if flavor in f.name or flavor in f.human_id or flavor in f.id:
-                lgr.debug('flavor {0} exists'.format(flavor))
+                lgr.debug('VALIDATED:'
+                          'flavor {0} exists'.format(flavor))
                 return
-        lgr.error('flavor {0} does not exist'.format(flavor))
+        lgr.error('VALIDATION ERROR:'
+                  'flavor {0} does not exist'.format(flavor))
         lgr.info('list of available flavors:')
         for f in flavors:
             lgr.info('    {0}'.format(f.name))
         validated = False
 
-    def _validate_floating_ip_quota(self):
-        global validated
-
-        lgr.debug('checking whether floating ips are available...')
-        ips = self.nova_client.floating_ips.list()
-        for ip in ips:
-            print ip
-
     def _validate_instance_quota(self):
         global validated
 
         lgr.debug('checking whether instances are available...')
-
-    def _validate_subnet_exists(self, cidr):
-        global validated
-
-        lgr.debug('checking whether subnet {0} exists...'.format(cidr))
-        # print json.dumps(self.neutron_client.list_subnets(), sort_keys=True,
-        #                  indent=4, separators=(',', ': '))
-        for subnet in self.neutron_client.list_subnets()['subnets']:
-            if subnet['cidr'] == cidr:
-                lgr.debug('subnet {0} found in subnets pool'.format(cidr))
-                return
-        lgr.error('subnet {0} does not exist in the subnets pool'.format(cidr))
-        validated = False
-
-    def _validate_network_exists(self, network_name):
-        global validated
-
-        lgr.debug('checking whether network {0} exists...'
-                  .format(network_name))
-        # print json.dumps(self.neutron_client.list_networks(), sort_keys=True,
-        #                  indent=4, separators=(',', ': '))
-        for network in self.neutron_client.list_networks()['networks']:
-            if network['name'] == network_name:
-                lgr.debug('network {0} found in networks pool'
-                          .format(network_name))
-                return
-        lgr.error('network {0} does not exist in the networks pool'
-                  .format(network_name))
-        validated = False
 
     def _validate_key_perms(self, field, key_path):
         global validated
@@ -554,22 +530,26 @@ class OpenStackValidator:
         if key_path.startswith('~'):
             key_path = key_path.replace('~', home)
         if not oct(os.stat(key_path)[ST_MODE])[-3:] in VALID_KEY_PERMS:
-            lgr.error('ssh key {0} does not have the correct permissions'
+            lgr.error('VALIDATION ERROR:'
+                      'ssh key {0} does not have the correct permissions'
                       '({1}).'.format(key_path, VALID_KEY_PERMS))
             validated = False
             return
-        lgr.debug('ssh key {0} has the correct permissions'.format(key_path))
+        lgr.debug('VALIDATED:'
+                  'ssh key {0} has the correct permissions'.format(key_path))
 
     def _validate_url_accessible(self, field, package_url):
         global validated
 
-        lgr.debug('checking whether {0} is accessible'.format(package_url))
+        lgr.debug('checking whether url {0} is accessible'.format(package_url))
         status = urllib.urlopen(package_url).getcode()
         if not status == 200:
-            lgr.error('{0} is not accessible'.format(package_url))
+            lgr.error('VALIDATION ERROR:'
+                      'url {0} is not accessible'.format(package_url))
             validated = False
             return
-        lgr.debug('{0} is accessible'.format(package_url))
+        lgr.debug('VALIDATED:'
+                  'url {0} is accessible'.format(package_url))
 
     def _validate_schema(self, provider_config, schema):
         global validated
@@ -584,7 +564,8 @@ class OpenStackValidator:
             v.validate(provider_config)
         except ValidationError:
             validated = False
-            lgr.error('{0}'.format(errors))
+            lgr.error('VALIDATION ERROR:'
+                      '{0}'.format(errors))
 
 
 class CosmoOnOpenStackBootstrapper(object):
@@ -732,14 +713,14 @@ class CosmoOnOpenStackBootstrapper(object):
             insconf,
             insconf['name'],
             False,
-            {k: v for k, v in insconf.iteritems() if k != EP_FLAG},
+            {k: v for k, v in insconf.iteritems() if k == CREATE_IF_MISSING},
             mgr_kpconf['name'],
             msg_id if is_neutron_supported_region else msgconf['name']
         )
 
         if is_neutron_supported_region:
             network_name = nconf['name']
-            if not insconf[EP_FLAG]:  # new server
+            if insconf[CREATE_IF_MISSING]:  # new server
                 self._attach_floating_ip(
                     compute_config['management_server'], enet_id, server_id)
             else:  # existing server
@@ -1168,8 +1149,8 @@ class CreateOrEnsureExists(object):
                 raise already exists
             use resource
         else:
-            if use_existing:
-                raise is configured to use_existing but does not exist
+            if not create_if_missing:
+                raise does not exist
             create resource
         """
         if self._check(name, *args, **kw):
@@ -1179,16 +1160,22 @@ class CreateOrEnsureExists(object):
             the_id = self.ensure_exists(name, *args, **kw)
             created = False
         else:
-            if EP_FLAG in provider_config and provider_config[EP_FLAG]:
-                raise OpenStackLogicError("{0} '{1}' is configured to 'use_"
-                                          "existing' but does not exist"
+            if CREATE_IF_MISSING in provider_config \
+                    and not provider_config[CREATE_IF_MISSING]:
+                raise OpenStackLogicError("{0} '{1}' is not configured to"
+                                          " create_if_missing' but does not"
+                                          " exist"
                                           .format(self.__class__.WHAT, name))
             the_id = self._create(name, *args, **kw)
             created = True
+        # TODO:
+        # replace:
         if return_created:
             return the_id, created
         else:
             return the_id
+        # with:
+        # return the_id, created if return_created else the_id
 
     def ensure_exists(self, name, *args, **kw):
         lgr.debug("Will use existing {0} '{1}'"
