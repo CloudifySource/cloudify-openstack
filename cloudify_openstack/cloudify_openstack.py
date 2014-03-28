@@ -713,7 +713,7 @@ class CosmoOnOpenStackBootstrapper(object):
             insconf,
             insconf['name'],
             False,
-            {k: v for k, v in insconf.iteritems() if k == CREATE_IF_MISSING},
+            {k: v for k, v in insconf.iteritems() if k != CREATE_IF_MISSING},
             mgr_kpconf['name'],
             msg_id if is_neutron_supported_region else msgconf['name']
         )
